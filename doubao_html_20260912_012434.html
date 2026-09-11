@@ -1,0 +1,451 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>高中生数据可视化工具</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+    <style>
+        .chart-container { width: 100%; height: 450px; }
+        .tab-btn.active { background-color: #3b82f6; color: white; }
+        .drop-zone.dragover { border-color: #3b82f6; background-color: #eff6ff; }
+    </style>
+</head>
+<body class="bg-gray-50 min-h-screen">
+    <header class="bg-gradient-to-r from-blue-600 to-indigo-600 text-white py-6 shadow-lg">
+        <div class="container mx-auto px-4">
+            <h1 class="text-3xl font-bold text-center">📊 高中生数据可视化工具</h1>
+            <p class="text-center mt-2 text-blue-100">上传数据，一键生成统计图表 · 探究学习专用</p>
+        </div>
+    </header>
+
+    <main class="container mx-auto px-4 py-8">
+        <div class="grid lg:grid-cols-3 gap-6">
+            <!-- 左侧：数据输入区 -->
+            <div class="lg:col-span-1 space-y-6">
+                <div class="bg-white rounded-xl shadow-md p-5">
+                    <h2 class="text-lg font-bold text-gray-800 mb-4">📁 上传数据文件</h2>
+                    <div id="dropZone" class="drop-zone border-2 border-dashed border-gray-300 rounded-lg p-8 text-center cursor-pointer transition-all hover:border-blue-400">
+                        <div class="text-4xl mb-2">📄</div>
+                        <p class="text-gray-600">点击或拖拽 CSV / Excel 文件到这里</p>
+                        <p class="text-xs text-gray-400 mt-2">支持 .csv / .xlsx / .xls 格式文件</p>
+                        <input type="file" id="fileInput" accept=".csv,.xlsx,.xls" class="hidden">
+                    </div>
+                </div>
+
+                <div class="bg-white rounded-xl shadow-md p-5">
+                    <h2 class="text-lg font-bold text-gray-800 mb-3">📋 数据预览</h2>
+                    <div id="dataPreview" class="text-sm text-gray-500 text-center py-4">暂无数据，请先上传 CSV 或 Excel 文件</div>
+                </div>
+
+                <div class="bg-white rounded-xl shadow-md p-5">
+                    <h2 class="text-lg font-bold text-gray-800 mb-4">📈 选择图表类型</h2>
+                    <div class="grid grid-cols-2 gap-2">
+                        <button class="tab-btn active px-3 py-2 rounded-lg border text-sm font-medium transition-all" data-type="bar">分组柱形图</button>
+                        <button class="tab-btn px-3 py-2 rounded-lg border text-sm font-medium transition-all" data-type="line">折线图</button>
+                        <button class="tab-btn px-3 py-2 rounded-lg border text-sm font-medium transition-all" data-type="pie">饼图</button>
+                        <button class="tab-btn px-3 py-2 rounded-lg border text-sm font-medium transition-all" data-type="radar">雷达图</button>
+                    </div>
+                </div>
+
+                <div class="bg-white rounded-xl shadow-md p-5">
+                    <h2 class="text-lg font-bold text-gray-800 mb-4">🎯 快速体验</h2>
+                    <div class="space-y-2">
+                        <button class="example-btn w-full px-4 py-2 bg-blue-100 hover:bg-blue-200 text-blue-700 rounded-lg text-sm font-medium" data-example="bar">📊 班级成绩对比（柱形图）</button>
+                        <button class="example-btn w-full px-4 py-2 bg-green-100 hover:bg-green-200 text-green-700 rounded-lg text-sm font-medium" data-example="line">📈 气温变化趋势（折线图）</button>
+                        <button class="example-btn w-full px-4 py-2 bg-yellow-100 hover:bg-yellow-200 text-yellow-700 rounded-lg text-sm font-medium" data-example="pie">🥧 出行方式占比（饼图）</button>
+                        <button class="example-btn w-full px-4 py-2 bg-purple-100 hover:bg-purple-200 text-purple-700 rounded-lg text-sm font-medium" data-example="radar">🎯 综合素质评价（雷达图）</button>
+                    </div>
+                </div>
+
+                <div class="bg-blue-50 rounded-xl p-5 border border-blue-100">
+                    <h3 class="font-bold text-blue-800 mb-2">💡 使用说明</h3>
+                    <ul class="text-sm text-blue-700 space-y-1 list-disc list-inside">
+                        <li>第一行为列名（表头），下面是数据</li>
+                        <li>柱形图/折线图：适合对比多组数据</li>
+                        <li>饼图：适合看占比，选1列数值即可</li>
+                        <li>雷达图：适合多维度综合评价</li>
+                    </ul>
+                </div>
+            </div>
+
+            <!-- 右侧：图表+设置 -->
+            <div class="lg:col-span-2 space-y-6">
+                <div class="bg-white rounded-xl shadow-md p-5">
+                    <div id="chart" class="chart-container"></div>
+                </div>
+
+                <div class="bg-white rounded-xl shadow-md p-5">
+                    <h2 class="text-lg font-bold text-gray-800 mb-4">⚙️ 图表设置与提交</h2>
+                    <div class="grid md:grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">图表标题</label>
+                            <input type="text" id="chartTitle" value="我的数据统计图" class="w-full px-3 py-2 border rounded-lg text-sm">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">提交人姓名</label>
+                            <input type="text" id="studentName" placeholder="请输入你的姓名" class="w-full px-3 py-2 border rounded-lg text-sm">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">X轴 / 类别列</label>
+                            <select id="xAxisSelect" class="w-full px-3 py-2 border rounded-lg text-sm">
+                                <option>请先上传数据</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">所在小组</label>
+                            <select id="groupSelect" class="w-full px-3 py-2 border rounded-lg text-sm">
+                                <option value="">请选择小组</option>
+                                <option value="第1组">第1组</option>
+                                <option value="第2组">第2组</option>
+                                <option value="第3组">第3组</option>
+                                <option value="第4组">第4组</option>
+                                <option value="第5组">第5组</option>
+                                <option value="第6组">第6组</option>
+                                <option value="第7组">第7组</option>
+                                <option value="第8组">第8组</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Y轴 / 数值列（可多选）</label>
+                            <select id="yAxisSelect" multiple class="w-full px-3 py-2 border rounded-lg text-sm h-24">
+                                <option>请先上传数据</option>
+                            </select>
+                            <p class="text-xs text-gray-400 mt-1">按住 Ctrl 可多选</p>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">数据行筛选（可多选）</label>
+                            <select id="rowFilterSelect" multiple class="w-full px-3 py-2 border rounded-lg text-sm h-24">
+                                <option>请先上传数据</option>
+                            </select>
+                            <p class="text-xs text-gray-400 mt-1">按住 Ctrl 多选，仅生成选中行的图表</p>
+                        </div>
+                    </div>
+                    
+                    <div class="flex gap-3 mt-5">
+                        <button id="generateBtn" class="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-medium py-2.5 rounded-lg transition-colors">生成图表</button>
+                        <button id="downloadBtn" class="flex-1 bg-green-600 hover:bg-green-700 text-white font-medium py-2.5 rounded-lg transition-colors">下载图表图片</button>
+                        <button id="submitBtn" class="flex-1 bg-purple-600 hover:bg-purple-700 text-white font-medium py-2.5 rounded-lg transition-colors">提交到教师端</button>
+                    </div>
+                    <p class="text-xs text-gray-400 mt-2">💡 提交前请填写姓名并选择小组，按F12可查看提交调试日志</p>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <footer class="bg-gray-100 py-4 mt-8">
+        <p class="text-center text-gray-500 text-sm">高中信息技术 · 数据可视化探究学习工具</p>
+    </footer>
+
+    <script>
+        // ========== 配置区 ==========
+        const CONFIG = {
+            apiUrl: 'https://quickform.cn/api/bs52ynj2rk',
+            maxFileSize: 500 * 1024, // 500KB
+            fields: {
+                name: 'student_name',
+                group: 'group_name',
+                title: 'chart_title',
+                type: 'chart_type',
+                file: 'file',
+                attachment: 'attachment'
+            }
+        };
+
+        const chartDom = document.getElementById('chart');
+        const myChart = echarts.init(chartDom);
+        let currentData = null;
+        let currentType = 'bar';
+
+        // 4个示例数据
+        const examples = {
+            bar: {
+                csv: `班级,数学平均分\n一班,85\n二班,88\n三班,82\n四班,90\n五班,86`,
+                title: '各班级期中数学平均分对比', x: '班级', y: ['数学平均分'], type: 'bar'
+            },
+            line: {
+                csv: `月份,平均气温(℃)\n1月,4\n2月,7\n3月,12\n4月,18\n5月,23\n6月,27\n7月,30\n8月,29\n9月,24\n10月,18\n11月,12\n12月,6`,
+                title: '2024年某地月平均气温变化', x: '月份', y: ['平均气温(℃)'], type: 'line'
+            },
+            pie: {
+                csv: `出行方式,人数占比\n步行,20\n自行车,15\n公交,30\n私家车,25\n地铁,10`,
+                title: '学生上学出行方式占比', x: '出行方式', y: ['人数占比'], type: 'pie'
+            },
+            radar: {
+                csv: `学生,品德,学习,体育,艺术,劳动\n小明,85,92,78,88,80\n小红,90,85,82,90,85`,
+                title: '学生综合素质评价对比', x: '学生', y: ['品德','学习','体育','艺术','劳动'], type: 'radar'
+            }
+        };
+
+        // DataURL 转真实 File 对象
+        function dataURLtoFile(dataurl, filename) {
+            const arr = dataurl.split(',');
+            const mime = arr[0].match(/:(.*?);/)[1];
+            const bstr = atob(arr[1]);
+            let n = bstr.length;
+            const u8arr = new Uint8Array(n);
+            while (n--) u8arr[n] = bstr.charCodeAt(n);
+            return new File([u8arr], filename, { type: 'image/png' });
+        }
+
+        // ========== 文件上传 ==========
+        const dropZone = document.getElementById('dropZone');
+        const fileInput = document.getElementById('fileInput');
+        dropZone.addEventListener('click', () => fileInput.click());
+        dropZone.addEventListener('dragover', e => { e.preventDefault(); e.stopPropagation(); dropZone.classList.add('dragover'); });
+        dropZone.addEventListener('dragleave', e => { e.preventDefault(); e.stopPropagation(); dropZone.classList.remove('dragover'); });
+        dropZone.addEventListener('drop', e => {
+            e.preventDefault(); e.stopPropagation();
+            dropZone.classList.remove('dragover');
+            if (e.dataTransfer.files[0]) handleFile(e.dataTransfer.files[0]);
+        });
+        fileInput.addEventListener('change', e => { if (e.target.files[0]) handleFile(e.target.files[0]); });
+
+        function handleFile(file) {
+            const fileName = file.name.toLowerCase();
+            if (fileName.endsWith('.csv')) {
+                Papa.parse(file, {
+                    header: true, skipEmptyLines: true,
+                    complete: res => {
+                        currentData = res.data.filter(row => Object.values(row).some(v => v !== '' && v != null));
+                        updateDataUI(); generateChart();
+                    }
+                });
+            } else if (fileName.endsWith('.xlsx') || fileName.endsWith('.xls')) {
+                const reader = new FileReader();
+                reader.onload = e => {
+                    const workbook = XLSX.read(new Uint8Array(e.target.result), { type: 'array' });
+                    const sheet = workbook.Sheets[workbook.SheetNames[0]];
+                    currentData = XLSX.utils.sheet_to_json(sheet, { defval: '' })
+                        .filter(row => Object.values(row).some(v => v !== '' && v != null));
+                    updateDataUI(); generateChart();
+                };
+                reader.readAsArrayBuffer(file);
+            } else alert('仅支持 CSV、XLSX、XLS 格式文件');
+        }
+
+        // ========== UI 更新 ==========
+        function updateDataUI() {
+            if (!currentData?.length) {
+                document.getElementById('dataPreview').innerHTML = '<p class="text-gray-500 text-center py-4">暂无有效数据</p>';
+                return;
+            }
+            const headers = Object.keys(currentData[0]);
+            document.getElementById('dataPreview').innerHTML = `
+                <div class="text-left">
+                    <p class="font-medium text-gray-700">共 ${currentData.length} 行数据，${headers.length} 列</p>
+                    <p class="text-gray-500 text-xs mt-1">列名：${headers.join('、')}</p>
+                    <div class="mt-2 overflow-x-auto max-h-32 overflow-y-auto border rounded">
+                        <table class="w-full text-xs">
+                            <thead class="bg-gray-100 sticky top-0">
+                                <tr>${headers.map(h => `<th class="px-2 py-1 text-left">${h}</th>`).join('')}</tr>
+                            </thead>
+                            <tbody>
+                                ${currentData.slice(0,5).map(row => `<tr>${headers.map(h => `<td class="px-2 py-1 border-t">${row[h]}</td>`).join('')}</tr>`).join('')}
+                            </tbody>
+                        </table>
+                    </div>
+                    ${currentData.length>5 ? '<p class="text-xs text-gray-400 mt-1">... 仅显示前5行</p>' : ''}
+                </div>
+            `;
+            const xSel = document.getElementById('xAxisSelect');
+            const ySel = document.getElementById('yAxisSelect');
+            xSel.innerHTML = headers.map(h => `<option value="${h}">${h}</option>`).join('');
+            ySel.innerHTML = headers.map(h => `<option value="${h}" selected>${h}</option>`).join('');
+            updateRowFilterOptions();
+        }
+
+        function updateRowFilterOptions() {
+            const xCol = document.getElementById('xAxisSelect').value;
+            const rowFilter = document.getElementById('rowFilterSelect');
+            if (!currentData || !xCol) { rowFilter.innerHTML = '<option>请先上传数据</option>'; return; }
+            rowFilter.innerHTML = currentData.map(row => `<option value="${row[xCol]}" selected>${row[xCol]}</option>`).join('');
+        }
+        document.getElementById('xAxisSelect').addEventListener('change', updateRowFilterOptions);
+
+        // ========== 图表切换与生成 ==========
+        document.querySelectorAll('.tab-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                currentType = btn.dataset.type;
+                if (currentData) generateChart();
+            });
+        });
+        document.getElementById('generateBtn').addEventListener('click', generateChart);
+
+        function generateChart() {
+            if (!currentData?.length) { alert('请先上传数据或加载示例数据'); return; }
+            const title = document.getElementById('chartTitle').value;
+            const xCol = document.getElementById('xAxisSelect').value;
+            const yCols = Array.from(document.getElementById('yAxisSelect').selectedOptions).map(o => o.value);
+            const selectedRows = Array.from(document.getElementById('rowFilterSelect').selectedOptions).map(o => o.value);
+            if (!yCols.length) { alert('请至少选择一列数值数据'); return; }
+            if (!selectedRows.length) { alert('请至少选择一行数据'); return; }
+
+            const filtered = currentData.filter(row => selectedRows.includes(row[xCol]));
+            const categories = filtered.map(row => row[xCol]);
+            const series = yCols.map(col => ({
+                name: col,
+                type: currentType === 'bar' ? 'bar' : currentType === 'line' ? 'line' : undefined,
+                data: filtered.map(row => parseFloat(row[col]) || 0)
+            }));
+
+            let option = {
+                title: { text: title, left: 'center' },
+                tooltip: { trigger: currentType === 'pie' ? 'item' : 'axis' },
+                legend: { bottom: 0 },
+                grid: { left: '3%', right: '4%', bottom: '12%', containLabel: true }
+            };
+
+            switch(currentType) {
+                case 'bar': case 'line':
+                    option.xAxis = { type: 'category', data: categories };
+                    option.yAxis = { type: 'value' };
+                    option.series = series; break;
+                case 'pie':
+                    option.series = [{
+                        type: 'pie', radius: '60%',
+                        data: filtered.map(row => ({ name: row[xCol], value: parseFloat(row[yCols[0]]) || 0 }))
+                    }]; break;
+                case 'radar':
+                    const allVals = [];
+                    yCols.forEach(col => filtered.forEach(row => {
+                        const v = parseFloat(row[col]); if (!isNaN(v)) allVals.push(v);
+                    }));
+                    const max = allVals.length ? Math.max(...allVals) * 1.2 : 100;
+                    option.radar = { indicator: yCols.map(col => ({ name: col, max })) };
+                    option.series = [{
+                        type: 'radar', label: { show: true, fontSize: 10 },
+                        data: filtered.slice(0,5).map(row => ({
+                            name: row[xCol], value: yCols.map(col => parseFloat(row[col]) || 0)
+                        }))
+                    }];
+                    option.legend = { bottom: 0, data: filtered.slice(0,5).map(row => row[xCol]) };
+                    break;
+            }
+            myChart.setOption(option, true);
+        }
+
+        // ========== 下载图表 ==========
+        document.getElementById('downloadBtn').addEventListener('click', () => {
+            if (!currentData) { alert('请先生成图表再下载'); return; }
+            const url = myChart.getDataURL({ type: 'png', pixelRatio: 2, backgroundColor: '#fff' });
+            const a = document.createElement('a');
+            a.download = document.getElementById('chartTitle').value + '.png';
+            a.href = url; a.click();
+        });
+
+        // ========== 提交到教师端（官方推荐两步法） ==========
+        document.getElementById('submitBtn').addEventListener('click', async () => {
+            if (!currentData) { alert('请先生成图表再提交'); return; }
+
+            const name = document.getElementById('studentName').value.trim();
+            const group = document.getElementById('groupSelect').value;
+            if (!name) { alert('请输入提交人姓名'); document.getElementById('studentName').focus(); return; }
+            if (!group) { alert('请选择所在小组'); document.getElementById('groupSelect').focus(); return; }
+
+            // 生成图片文件
+            const dataURL = myChart.getDataURL({ type: 'png', pixelRatio: 1, backgroundColor: '#fff' });
+            const fileName = document.getElementById('chartTitle').value.replace(/[\\/:*?"<>|]/g, '') + '.png';
+            const imgFile = dataURLtoFile(dataURL, fileName);
+
+            if (imgFile.size > CONFIG.maxFileSize) {
+                alert(`图片过大（${(imgFile.size/1024).toFixed(1)}KB），超过500KB限制`);
+                return;
+            }
+
+            console.log('=== 第一步：上传图片文件 ===');
+            console.log('文件名：', fileName, '大小：', (imgFile.size/1024).toFixed(1) + 'KB');
+
+            try {
+                // 第一步：只上传图片，获取文件URL
+                const uploadForm = new FormData();
+                uploadForm.append(CONFIG.fields.file, imgFile);
+
+                const uploadRes = await fetch(CONFIG.apiUrl, {
+                    method: 'POST',
+                    body: uploadForm
+                });
+
+                const uploadResult = await uploadRes.json();
+                console.log('第一步上传返回：', uploadResult);
+
+                if (!uploadRes.ok || uploadResult.error) {
+                    throw new Error(uploadResult.message || '文件上传失败');
+                }
+
+                // 第二步：提交完整数据（JSON格式）
+                const submitData = {
+                    [CONFIG.fields.name]: name,
+                    [CONFIG.fields.group]: group,
+                    [CONFIG.fields.title]: document.getElementById('chartTitle').value,
+                    [CONFIG.fields.type]: currentType,
+                    [CONFIG.fields.attachment]: uploadResult.attachment || uploadResult.url || ''
+                };
+
+                console.log('=== 第二步：提交完整数据 ===');
+                console.log('提交内容：', submitData);
+
+                const submitRes = await fetch(CONFIG.apiUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(submitData)
+                });
+
+                const submitResult = await submitRes.json();
+                console.log('第二步提交返回：', submitResult);
+
+                if (!submitRes.ok && submitResult.error) {
+                    throw new Error(submitResult.message || '数据提交失败');
+                }
+
+                alert(`✅ 提交成功！\n姓名：${name}\n小组：${group}\n图片：${(imgFile.size/1024).toFixed(1)}KB`);
+
+            } catch (err) {
+                console.error('提交失败：', err);
+                alert(`❌ 提交失败\n错误原因：${err.message}\n请按F12查看详细日志`);
+            }
+        });
+
+        // ========== 示例加载 ==========
+        document.querySelectorAll('.example-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const ex = examples[btn.dataset.example];
+                currentType = ex.type;
+                document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+                document.querySelector(`.tab-btn[data-type="${ex.type}"]`).classList.add('active');
+                Papa.parse(ex.csv, {
+                    header: true, skipEmptyLines: true,
+                    complete: res => {
+                        currentData = res.data.filter(row => Object.values(row).some(v => v !== '' && v != null));
+                        document.getElementById('chartTitle').value = ex.title;
+                        updateDataUI();
+                        document.getElementById('xAxisSelect').value = ex.x;
+                        updateRowFilterOptions();
+                        const ySel = document.getElementById('yAxisSelect');
+                        Array.from(ySel.options).forEach(opt => {
+                            opt.selected = ex.y.includes(opt.value);
+                        });
+                        generateChart();
+                    }
+                });
+            });
+        });
+
+        // 初始加载
+        Papa.parse(examples.bar.csv, {
+            header: true, skipEmptyLines: true,
+            complete: res => {
+                currentData = res.data.filter(row => Object.values(row).some(v => v !== '' && v != null));
+                updateDataUI(); generateChart();
+            }
+        });
+
+        window.addEventListener('resize', () => myChart.resize());
+    </script>
+</body>
+</html>
